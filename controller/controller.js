@@ -6,6 +6,7 @@ const User = require('../schema/userSchema');
 const { Resend } = require('resend');
 const Team = require('../schema/teamSchema');
 const Project = require('../schema/projectSchema');
+const Task = require('../schema/taskSchema');
 /* REGISTER USER */
 exports .register=async(req,res)=>{
     const user=req.body
@@ -210,12 +211,12 @@ const ownerId = req.user.id; // comes from jwtMiddleware
 /* GET ALL TEAMS */
 exports.fetchTeam = async (req, res) => {
   try {
-    const owner = req.user.id;
+    const ownerId = req.user.id;
 
     const teams = await Team.find({
       $or: [
-        { owner: owner },
-        { "members.user": owner } // Check if user is a member of the team
+        { owner: ownerId },
+        { "members.user": ownerId } // Check if user is a member of the team
       ]
     })
       
@@ -235,71 +236,130 @@ exports.fetchTeam = async (req, res) => {
 
 exports.addProject = async (req, res) => {
     try {
-    const { title, description, deadline, team, members } = req.body;
-     const ownerId = req.user.id;
-    // Validation
-    if (!title || !description || !deadline) {
-      return res.status(400).json({ message: 'Please fill in all required fields' });
+    const { title, description, teamId, deadline } = req.body;
+    const ownerId = req.user.id;
+
+    let members = [];
+
+    // If linked to a team, include its members
+    if (teamId) {
+      const team = await Team.findById(teamId).populate("members.user");
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      members = team.members.map((m) => m.user._id);
     }
 
-    // Create new project
     const newProject = new Project({
       title,
       description,
+      owner: ownerId,
+      team: teamId || null,
+      members,
       deadline,
-      owner:ownerId, // from verifyToken middleware
-      team: team || null,
-      members: members || [],
     });
 
     const savedProject = await newProject.save();
 
     res.status(201).json({
-      message: 'Project created successfully',
-      project: savedProject
+      message: "Project created successfully",
+      project: savedProject,
     });
   } catch (error) {
-    console.error('Error creating project:', error);
-    res.status(500).json({ message: 'Server error while creating project' });
+    console.error("Error creating project:", error);
+    res.status(500).json({ message: "Error creating project", error: error.message });
   }
 };
+   
 
 /* GET ALL PROJECT */
 exports.fetchProject = async (req, res) => {
-  try {
-    const projects = await Project.find()
-      .populate('owner', 'name email') // Populate owner details
-      .populate('team', 'name') // Populate team details
-      .populate('members', 'name email'); // Populate member details
 
-    res.json({ projects });
+  try {
+    const ownerId = req.user.id;
+    const projects = await Project.find({
+      $or: [
+        { owner:ownerId },
+        { members: req.user._id|| ownerId } // Check if user is a member of the project
+      ]
+    })
+    .populate('owner', 'name email')
+    .populate('members', 'name email')
+    .populate('tasks')
+    .sort({ createdAt: -1 });
+
+    res.json(projects);
   } catch (error) {
-    res.status(500).json({
-      message: "Error fetching projects",
-      error: error.message
-    });
-    
-  
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
 /* GET PROJECT BY ID */
 exports.getProjectById = async (req, res) => {
-  try {
-    const projectId = req.params.id;
-    const project = await Project.findById(projectId)
-      .populate('owner', 'name email') // Populate owner details    
-      .populate('team', 'name') // Populate team details
-      .populate('members', 'name email'); // Populate member details
+ try {
+    const project = await Project.findById(req.params.id)
+      .populate('owner', 'name email')
+      .populate('members', 'name email')
+      .populate({
+        path: 'tasks',
+        populate: {
+          path: 'assignedTo',
+          select: 'name email'
+        }
+      });
+
     if (!project) {
       return res.status(404).json({ message: 'Project not found' });
     }
-    res.json({ project });
+
+    // Check if user has access to this project
+    // const hasAccess = project.owner._id.toString() === req.user._id.toString() ||
+    //                  project.members.some(member => member._id.toString() === req.user._id.toString());
+
+    // if (!hasAccess) {
+    //   return res.status(403).json({ message: 'Access denied' });
+    // }
+
+    res.json(project);
   } catch (error) {
-    res.status(500).json({
-      message: "Error fetching project",
-      error: error.message
-    });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
-}
+
+};
+
+/*ADD TASK  */
+exports.addTask = async (req, res) => {
+ 
+try {
+    const { title, description, projectId, assignedTo, dueDate } = req.body;
+
+    if (!title || !projectId) {
+      return res.status(400).json({ message: "Title and Project are required" });
+    }
+
+    // Ensure project exists
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    const newTask = new Task({
+      title,
+      description,
+      project: projectId,
+      assignedTo: assignedTo || null,
+      createdBy: req.user.id, // user from jwtMiddleware
+      dueDate,
+    });
+
+    await newTask.save();
+    return res.status(201).json({ message: "Task created successfully", task: newTask });
+  } catch (error) {
+    console.error("Error creating task:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
 
 
+  

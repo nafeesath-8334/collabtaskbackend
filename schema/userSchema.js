@@ -44,5 +44,5 @@ resetPasswordExpires:Date,
 });
 
 
-const User=mongoose.model("userModel",userSchema)
+const User=mongoose.model("User",userSchema)
 module.exports=User

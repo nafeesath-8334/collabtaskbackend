@@ -1,5 +1,5 @@
 const express = require('express');
-const { register, login, getProfile, forgotPswd, resetPassword, fetchUserDetails, createTeam, addProject, fetchTeam, getProjectById, fetchProject } = require('../controller/controller');
+const { register, login, getProfile, forgotPswd, resetPassword, fetchUserDetails, createTeam, addProject, fetchTeam, getProjectById, fetchProject, addTask } = require('../controller/controller');
 const authorize = require('../middleware/autherise');
 const jwtMiddleware = require('../middleware/jwtMiddleware');
 const router = express.Router();
@@ -11,8 +11,9 @@ const router = express.Router();
 router.get("/getProfile/:id", getProfile);
 router.get("/fetchUserDetails",fetchUserDetails);
 router.post("/addTeam",jwtMiddleware,authorize("Admin"), createTeam);
-router.get("/fetchTeam",authorize(" Admin"),fetchTeam);
+router.get("/fetchTeam",jwtMiddleware,fetchTeam);
 router.post("/addProject",jwtMiddleware,authorize("Admin"), addProject);
-router.get("/getProjectById/:id", jwtMiddleware, authorize("Admin"),getProjectById)
-router.get("/fetchProject", jwtMiddleware,fetchProject)
+router.get("/getProjectById/:id", jwtMiddleware,getProjectById)
+router.get("/fetchProject",jwtMiddleware,fetchProject)
+router.post("/addTask",jwtMiddleware,authorize("Admin"), addTask);
 module.exports=router;
