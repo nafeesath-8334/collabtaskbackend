@@ -9,6 +9,7 @@ app.use(express.json());
 const router = require('./routes/routes.js')
 app.use( router);
 
+  app.use('/profileImages',express.static("profileImages"))
 
 app.get('/', (req, res) => {
     res.send('Hello World!');

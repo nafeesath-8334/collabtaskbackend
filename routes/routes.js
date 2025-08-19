@@ -1,7 +1,9 @@
 const express = require('express');
-const { register, login, getProfile, forgotPswd, resetPassword, fetchUserDetails, createTeam, addProject, fetchTeam, getProjectById, fetchProject, addTask } = require('../controller/controller');
+const { register, login, getProfile, forgotPswd, resetPassword, fetchUserDetails, createTeam, addProject, fetchTeam, getProjectById, fetchProject, addTask, editProfile } = require('../controller/controller');
 const authorize = require('../middleware/autherise');
 const jwtMiddleware = require('../middleware/jwtMiddleware');
+const upload = require('../middleware/multerMiddleware');
+
 const router = express.Router();
 
  router.post('/register',register)
@@ -10,6 +12,7 @@ const router = express.Router();
   router.post('/resetPassword/:token',resetPassword)
 router.get("/getProfile/:id", getProfile);
 router.get("/fetchUserDetails",fetchUserDetails);
+router.put( "/editProfile/:id", jwtMiddleware,upload.single("img"),editProfile);
 router.post("/addTeam",jwtMiddleware,authorize("Admin"), createTeam);
 router.get("/fetchTeam",jwtMiddleware,fetchTeam);
 router.post("/addProject",jwtMiddleware,authorize("Admin"), addProject);
