@@ -316,42 +316,56 @@ exports.addProject = async (req, res) => {
 
 
 /* GET ALL PROJECT */
+
 exports.fetchProject = async (req, res) => {
-
   try {
-    const ownerId = req.user.id;
-    const projects = await Project.find({
-      $or: [
-        { owner: ownerId },
-        { members: req.user._id || ownerId } // Check if user is a member of the project
-      ]
-    })
-      .populate('owner', 'name email')
-      .populate('members', 'name email')
-      .populate('tasks', 'title description status assignedTo dueDate')
-
-      .populate('team', 'name description')
-
-      .sort({ createdAt: -1 });
+    const projects = await Project.find()
+      .populate("owner", "name email")
+      .populate({
+        path: "team",
+        populate: {
+          path: "members.user", // ✅ populate nested user field
+          model: "User",
+          select: "name email"
+        }
+      })
+      .populate("members", "name email")
+      .populate({
+        path: "tasks",
+        populate: {
+          path: "assignedTo",
+          model: "User",
+          select: "name email"
+        }
+      });
 
     res.json(projects);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err });
   }
 };
+
 
 
 /* GET PROJECT BY ID */
 exports.getProjectById = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id)
-      .populate("members", "name email")
-      .populate("createdBy", "name email");
+      .populate("owner", "name email")
+      .populate("members", "name email") // direct members
+      .populate({
+        path: "team",
+        populate: {
+          path: "members.user", // ✅ populate nested user field
+          model: "User",
+          select: "name email"
+        }
+      });
 
     if (!project) return res.status(404).json({ message: "Project not found" });
 
     // fetch tasks separately
-    const tasks = await Task.find({ project: project._id }).populate("assignedTo", "name");
+    const tasks = await Task.find({ project: project._id }).populate("assignedTo", "name email");
 
     res.json({ ...project.toObject(), tasks });
   } catch (err) {
@@ -359,9 +373,10 @@ exports.getProjectById = async (req, res) => {
   }
 };
 
-/*ADD TASK  */
-exports.addTask = async (req, res) => {
 
+
+/* ADD TASK */
+exports.addTask = async (req, res) => {
   try {
     const { title, description, projectId, assignedTo, dueDate } = req.body;
 
@@ -385,7 +400,15 @@ exports.addTask = async (req, res) => {
     });
 
     await newTask.save();
-    return res.status(201).json({ message: "Task created successfully", task: newTask });
+
+    // ✅ Add task to project
+    project.tasks.push(newTask._id);
+    await project.save();
+
+    return res.status(201).json({
+      message: "Task created successfully",
+      task: newTask,
+    });
   } catch (error) {
     console.error("Error creating task:", error);
     return res.status(500).json({ message: "Internal Server Error" });
