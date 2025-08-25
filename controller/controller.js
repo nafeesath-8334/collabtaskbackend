@@ -304,6 +304,17 @@ exports.addProject = async (req, res) => {
 
     const savedProject = await newProject.save();
 
+    // 🔹 Update owner with project
+    await User.findByIdAndUpdate(ownerId, { $push: { projects: savedProject._id } });
+
+    // 🔹 Update all team members with project
+    if (members.length > 0) {
+      await User.updateMany(
+        { _id: { $in: members } },
+        { $push: { projects: savedProject._id } }
+      );
+    }
+
     res.status(201).json({
       message: "Project created successfully",
       project: savedProject,
@@ -343,7 +354,44 @@ exports.fetchProject = async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err });
   }
+}
+/* GET PROJECT&TASK BY USER ID */ 
+exports.fetchProjectByUserId = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Find all teams the user belongs to
+    const teams = await Team.find({ "members.user": userId }).select("_id");
+    const teamIds = teams.map((t) => t._id);
+
+    // Fetch projects where user is:
+    
+    const projects = await Project.find({
+  $or: [{ owner: userId }, { members: userId }]
+})
+.populate("owner", "name email")
+.populate("members", "name email")
+.populate({
+  path: "team",
+  populate: {
+    path: "members.user",
+    select: "name email"
+  }
+});
+
+
+    // Fetch tasks assigned to user
+    const tasks = await Task.find({ assignedTo: userId })
+      .populate("project", "title")
+      .populate("assignedTo", "name email");
+
+    res.status(200).json({ projects, tasks });
+  } catch (err) {
+    console.error("Error fetching user projects:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
 };
+
 
 
 
@@ -370,6 +418,37 @@ exports.getProjectById = async (req, res) => {
     res.json({ ...project.toObject(), tasks });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err });
+  }
+};
+
+/* UPDATE PROJECT */
+exports.updateProject = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body; // {title, description, status, deadline, etc.}
+
+    const project = await Project.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    })
+      .populate("owner", "name email")
+      .populate("members", "name email")
+      .populate({
+        path: "team",
+        populate: { path: "members.user", select: "name email" },
+      })
+      .populate({
+        path: "tasks",
+        populate: { path: "assignedTo", select: "name email" },
+      });
+
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    res.json({ message: "Project updated successfully", project });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating project", error: err.message });
   }
 };
 
@@ -414,6 +493,43 @@ exports.addTask = async (req, res) => {
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };
+/* GET TASK BY ID */
+exports.getTaskById = async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id)
+      .populate("project", "title description")
+      .populate("assignedTo", "name email")
+      .populate("createdBy", "name email");
+
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    res.json(task);
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err });
+  }
+}
+/* UPDATE TASK */
+ exports.updateTask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body; // {title, description, status, dueDate, etc.}
+
+    const task = await Task.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    })
+      .populate("project", "title description")
+      .populate("assignedTo", "name email")
+      .populate("createdBy", "name email");
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    res.json({ message: "Task updated successfully", task });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating task", error: err.message });
+  }
+}
+
 
 
 
