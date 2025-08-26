@@ -272,7 +272,60 @@ exports.fetchTeam = async (req, res) => {
     });
   }
 };
+/*GET TEAM BY ID */
+exports.getTeamById = async (req, res) => {
+  try {
+    const team = await Team.findById(req.params.id)
+      .populate("owner", "name email")
+      .populate("members.user", "name email") // if members is [{ user: ObjectId }]
+      .populate("projects", "title description");
 
+    if (!team) {
+      return res.status(404).json({ message: "Team not found" });
+    }
+
+    res.status(200).json(team);
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+/* UPDATE TEAM */
+
+exports.updateTeam = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body; // {name, description, members, status}
+    const team = await Team.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    })
+    if (!team) {
+      return res.status(404).json({ message: "Team not found" });
+    }
+    res.json({ message: "Team updated successfully", team });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating team", error: err.message });
+  }
+};
+/*DELETE TEAM*/
+exports.deleteTeam = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const team = await Team.findByIdAndDelete(id);
+    if (!team) {
+      return res.status(404).json({ message: "Team not found" });
+    }
+    // Remove team reference from users
+    await User.updateMany(
+      { teams: team._id },
+      { $pull: { teams: team._id } }
+    );
+    res.json({ message: "Team deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Error deleting team", error: err.message });
+  }
+};
 
 /* ADD PROJECT  */
 
@@ -451,7 +504,24 @@ exports.updateProject = async (req, res) => {
     res.status(500).json({ message: "Error updating project", error: err.message });
   }
 };
-
+/*DELETE PROJECT*/
+ exports.deleteProject = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const project = await Project.findByIdAndDelete(id);
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+    // Remove project reference from users
+    await User.updateMany(
+      { projects: project._id },
+      { $pull: { projects: project._id } }
+    );
+    res.json({ message: "Project deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Error deleting project", error: err.message });
+  }
+};
 
 
 /* ADD TASK */
@@ -529,7 +599,117 @@ exports.getTaskById = async (req, res) => {
     res.status(500).json({ message: "Error updating task", error: err.message });
   }
 }
+/*DELETE TASK*/
+ exports.deleteTask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const task = await Task.findByIdAndDelete(id);
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    // Also remove task reference from its project
+    await Project.findByIdAndUpdate(
+      task.project,
+      { $pull: { tasks: task._id } }
+    );
+    res.json({ message: "Task deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Error deleting task", error: err.message });
+  }
+};
 
 
 
+/*UPDATE PROJECT STATUS */
+exports.updateProjectStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+
+    const updatedProject = await Project.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true, runValidators: true, fields: { status: 1, title: 1 } } 
+      // ^ only return limited fields
+    );
+
+    if (!updatedProject) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    return res.status(200).json({
+      message: "Project status updated successfully",
+      project: updatedProject,
+    });
+  } catch (error) {
+    console.error("Error updating project status:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+/*UPDATE TASK STATUS */
+
+
+exports.updateTaskStatus = async (req, res) => {
+  try {  
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+
+    const updatedTask = await Task.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true, runValidators: true, fields: { status: 1, title: 1 } }
+    ); 
+
+    if (!updatedTask) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    return res.status(200).json({
+      message: "Task status updated successfully",
+      task: updatedTask,
+    });
+  } catch (error) {
+    console.error("Error updating task status:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+/*UPDATE TASK PRIORITY */
+ exports.updateTaskPriority = async (req, res) => {
+   try {
+     const { id } = req.params;
+     const { priority } = req.body;
+    if (!priority) {
+       return res.status(400).json({ message: "Priority is required" });
+     }
+     const updatedTask = await Task.findByIdAndUpdate(
+       id,
+       { priority },
+      { new: true, runValidators: true, fields: { priority: 1, title: 1 } }
+       // ^ only return limited fields
+    );
+     if (!updatedTask) {
+       return res.status(404).json({ message: "Task not found" });
+     }
+     return res.status(200).json({
+       message: "Task priority updated successfully",
+       task: updatedTask,
+     });
+  } catch (error) {
+     console.error("Error updating task priority:", error);
+     return res.status(500).json({ message: "Server error", error: error.message });
+   }
+ };
 
